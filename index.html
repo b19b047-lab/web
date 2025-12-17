@@ -22,7 +22,7 @@
         }
         .table thead th {
             font-weight: 700;
-            white-space: nowrap; /* 防止標題換行 */
+            /* 移除 white-space: nowrap; 允許標題換行以適應手機畫面 */
         }
         /* 處理狀態的視覺化 */
         .status-done { 
@@ -32,6 +32,8 @@
             padding: 5px 10px;
             border-radius: 5px;
             display: inline-block;
+            white-space: nowrap; /* 確保狀態文字不被截斷 */
+            font-size: 0.85rem;
         }
         .status-wait { 
             color: white; 
@@ -40,11 +42,32 @@
             padding: 5px 10px;
             border-radius: 5px;
             display: inline-block;
+            white-space: nowrap; /* 確保狀態文字不被截斷 */
+            font-size: 0.85rem;
+        }
+
+        /* RWD 優化：隱藏手機畫面上不重要的表格欄位 */
+        @media (max-width: 768px) {
+            /* 隱藏時間戳記欄位 */
+            .hide-on-mobile {
+                display: none;
+            }
+            /* 讓 container 在小螢幕上最大化利用空間 */
+            .container {
+                padding-left: 0;
+                padding-right: 0;
+            }
+            /* 讓表格內的文字在手機上可以自動換行 */
+            .table td, .table th {
+                white-space: normal;
+                word-break: break-word;
+            }
         }
     </style>
 </head>
 <body>
 
+<!-- RWD 優化：在小螢幕上使用 container-fluid 以獲得更多寬度 -->
 <div class="container my-5">
     <h1 class="text-center mb-5 text-primary">🏘️ 社區通報資料查詢中心</h1>
 
@@ -81,9 +104,9 @@
         <table class="table table-striped bg-white shadow-sm">
             <thead class="table-dark">
                 <tr>
-                    <th scope="col">時間戳記</th>
+                    <th scope="col" class="hide-on-mobile">時間戳記</th> <!-- 手機隱藏 -->
                     <th scope="col">社區里別</th>
-                    <th scope="col">鄰長編號</th> <!-- 新增欄位 -->
+                    <th scope="col" class="hide-on-mobile">鄰長編號</th> <!-- 手機隱藏 -->
                     <th scope="col">通報類別</th>
                     <th scope="col">您想改善問題選項</th> 
                     <th scope="col">處理狀態</th>
@@ -99,11 +122,13 @@
 
 <script>
     // *******************************************************************
-    // 【已確認】這是你的 Google Apps Script 部署網址，用於抓取 JSON 資料。
+    // 【已更新為您的 Google Apps Script 部署網址】
     // *******************************************************************
     const API_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLiIb-0nsspLls_O2Ip_C7D5RVX_JRsjqmz3CHOwMonmuYu8UEZKULA0GNi6_xNWaZQzjlwRGaz1cba4dflWmG_heNLp6ztXWzyaQHhxaauiim117DbbYaBZGR7t1L4guPmYTzbgjVUW-CLd5D9SQj0wJRVLixNfFsny5Q8Zgu0x7Y6GpuZ0m_jEk-enk9wRVwitCPOPJ1uLxHtm0eRVJ9Z7egK2ByTse49Lt5I8wSbAHxKs53erl30VBZWozj36x4mUYoUtj3gTKKXZalTKs1riUhEGyA&lib=MRODCX4RmlI851JcMLCsDUWRRykl-Pzzp'; 
 
     let allData = []; // 用來儲存從 API 抓取的所有資料
+    
+    // 移除了模擬數據 (MOCK_DATA) 區塊，直接使用 API 抓取
 
     /**
      * 輔助函數：嘗試從數據項中獲取正確的處理狀態鍵名
@@ -140,6 +165,11 @@
             }
         });
 
+        // 清空舊選項 (除了第一個 "選擇全部里別")
+        while (select.options.length > 1) {
+            select.remove(1);
+        }
+
         // 將里別名稱轉換為陣列並排序 (使用中文排序)
         const sortedVillages = Array.from(villages).sort((a, b) => a.localeCompare(b, 'zh-TW'));
 
@@ -160,9 +190,19 @@
             // 使用 fetch 抓取資料
             const response = await fetch(API_URL);
             if (!response.ok) {
+                // 欄位數使用桌面版 colspan=6
+                const statusText = response.status === 404 
+                    ? `資料載入失敗，HTTP 錯誤碼: ${response.status} (網址可能已失效或部署權限有誤)`
+                    : `資料載入失敗，HTTP 錯誤碼: ${response.status}`;
+                
+                document.getElementById('dataBody').innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">
+                    ${statusText}
+                </td></tr>`;
+                
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            allData = await response.json();
+            // 這裡假設真實 GAS API 返回的 JSON 格式
+            allData = await response.json(); 
             console.log("資料已成功載入:", allData);
             
             // 載入資料後，填充里別篩選器
@@ -170,11 +210,14 @@
             
             displayData(); // 成功載入後，立即顯示資料
         } catch (error) {
+            // 處理非 HTTP 錯誤 (例如網路連線錯誤)
             console.error("載入資料時發生錯誤:", error);
-            // 欄位數增加到 6
-            document.getElementById('dataBody').innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">
-                資料載入失敗，可能原因：瀏覽器阻擋跨域請求，或 GAS 部署權限問題。
-            </td></tr>`;
+            // 確保錯誤訊息顯示在表格中
+            if (!document.getElementById('dataBody').innerHTML.includes('載入失敗')) {
+                document.getElementById('dataBody').innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">
+                    資料載入失敗，可能原因：網路連線問題或 GAS 部署權限問題。
+                </td></tr>`;
+            }
         }
     }
 
@@ -202,9 +245,14 @@
             return villageMatch && statusMatch;
         });
 
+        // 判斷當前是否在行動裝置上（根據 CSS 定義的斷點 768px）
+        const isMobile = window.matchMedia("(max-width: 768px)").matches;
+        
+        // 由於我們在手機上隱藏了兩個欄位，所以總 colspan 需要調整
+        const colspanCount = isMobile ? 4 : 6; 
+
         if (filtered.length === 0) {
-            // 欄位數增加到 6
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-info">查無符合條件的相關資料</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="${colspanCount}" class="text-center py-4 text-info">查無符合條件的相關資料</td></tr>`;
             return;
         }
 
@@ -252,9 +300,9 @@
             const problemOption = item["您想改善問題選項"] || '-'; 
 
             const row = `<tr>
-                <td>${timestamp}</td>
+                <td class="hide-on-mobile">${timestamp}</td> <!-- 手機隱藏 -->
                 <td>${item["社區里別"] || '-'}</td>
-                <td>${neighborChief}</td> <!-- 顯示鄰長編號 -->
+                <td class="hide-on-mobile">${neighborChief}</td> <!-- 手機隱藏 -->
                 <td>${reportCategory}</td> 
                 <td>${problemOption}</td> 
                 <td><span class="${statusClass}">${statusText}</span></td>
@@ -265,6 +313,12 @@
 
     // 網頁啟動時，載入資料
     fetchData();
+    
+    // 監聽視窗大小變化，如果表格欄位數因 RWD 而改變，需要調整 colspan 的值
+    window.addEventListener('resize', () => {
+        // 在 resize 時，重新執行 displayData 就可以確保 colspan 正確
+        displayData();
+    });
 </script>
 
 </body>
