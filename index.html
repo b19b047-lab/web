@@ -281,13 +281,16 @@
             // 確保時間戳記顯示為可讀格式
             const timestamp = new Date(item["時間戳記"]).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
             
-            // 獲取「通報類別」 (已包含多鍵名容錯)
-            let reportCategory = item["通報類別"];
-            if (!reportCategory || reportCategory === '-') {
-                // 嘗試常見的替代鍵名：問題類別、通報事項、問題類型
-                reportCategory = item["問題類別"] || item["通報事項"] || item["問題類型"] || '-';
-            }
-            reportCategory = reportCategory || '-';
+            // 獲取「通報類別」 (已增強多鍵名容錯，檢查多個可能的欄位名稱)
+            let reportCategory = 
+                item["通報類別"] ||
+                item["問題類別"] || 
+                item["通報事項"] || 
+                item["問題類型"] ||
+                item["類型"] || // 新增：單純的「類型」
+                item["通報"] || // 新增：單純的「通報」
+                item["類別"] || // 新增：單純的「類別」
+                '-'; // 預設值
 
             // 獲取「鄰長編號」 (已包含多鍵名容錯)
             let neighborChief = item["您是第幾鄰長"];
