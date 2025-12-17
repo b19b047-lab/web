@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社區通報查詢系統</title>
+    <!-- 引入 Bootstrap 5 (RWD 響應式設計) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body { background-color: #e9ecef; padding: 20px; font-family: 'Inter', sans-serif; }
+        .search-container { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+            margin-bottom: 25px; 
+        }
+        .table-responsive {
+            border-radius: 12px;
+            overflow: hidden; /* 確保圓角效果 */
+        }
+        .table thead th {
+            font-weight: 700;
+            white-space: nowrap; /* 防止標題換行 */
+        }
+        /* 處理狀態的視覺化 */
+        .status-done { 
+            color: white; 
+            font-weight: bold; 
+            background-color: #28a745; /* Green - 已完成 */
+            padding: 5px 10px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .status-wait { 
+            color: white; 
+            font-weight: bold; 
+            background-color: #dc3545; /* Red - 未完成 */
+            padding: 5px 10px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container my-5">
+    <h1 class="text-center mb-5 text-primary">🏘️ 社區通報資料查詢中心</h1>
+
+    <!-- 查詢過濾區塊 -->
+    <div class="search-container">
+        <h5 class="mb-3">資料篩選</h5>
+        <div class="row g-3">
+            <!-- 搜尋里別 (已改為下拉選單) -->
+            <div class="col-md-5 col-lg-4">
+                <label for="filterVillage" class="form-label fw-bold">依里別篩選</label>
+                <select id="filterVillage" class="form-select">
+                    <option value="">選擇全部里別</option>
+                    <!-- 選項將由 JavaScript 動態填充 -->
+                </select>
+            </div>
+            <!-- 處理狀態 -->
+            <div class="col-md-5 col-lg-4">
+                <label for="filterStatus" class="form-label fw-bold">處理狀態</label>
+                <select id="filterStatus" class="form-select" onchange="displayData()">
+                    <option value="">全部狀態</option>
+                    <option value="V">已完成 (V)</option>
+                    <option value="X">未完成 (X)</option>
+                </select>
+            </div>
+            <!-- 篩選按鈕 (現在主要用於狀態篩選，里別會自動觸發) -->
+            <div class="col-md-2 col-lg-4 d-flex align-items-end">
+                <button class="btn btn-primary w-100 py-2" onclick="displayData()">立即篩選</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 資料表格顯示區 -->
+    <div class="table-responsive">
+        <table class="table table-striped bg-white shadow-sm">
+            <thead class="table-dark">
+                <tr>
+                    <th scope="col">時間戳記</th>
+                    <th scope="col">社區里別</th>
+                    <th scope="col">鄰長編號</th> <!-- 新增欄位 -->
+                    <th scope="col">通報類別</th>
+                    <th scope="col">您想改善問題選項</th> 
+                    <th scope="col">處理狀態</th>
+                </tr>
+            </thead>
+            <tbody id="dataBody">
+                <!-- 資料載入中的預設訊息，欄位數增加到 6 -->
+                <tr><td colspan="6" class="text-center py-4 text-muted">資料載入中，請稍候...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // *******************************************************************
+    // 【已確認】這是你的 Google Apps Script 部署網址，用於抓取 JSON 資料。
+    // *******************************************************************
+    const API_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLiIb-0nsspLls_O2Ip_C7D5RVX_JRsjqmz3CHOwMonmuYu8UEZKULA0GNi6_xNWaZQzjlwRGaz1cba4dflWmG_heNLp6ztXWzyaQHhxaauiim117DbbYaBZGR7t1L4guPmYTzbgjVUW-CLd5D9SQj0wJRVLixNfFsny5Q8Zgu0x7Y6GpuZ0m_jEk-enk9wRVwitCPOPJ1uLxHtm0eRVJ9Z7egK2ByTse49Lt5I8wSbAHxKs53erl30VBZWozj36x4mUYoUtj3gTKKXZalTKs1riUhEGyA&lib=MRODCX4RmlI851JcMLCsDUWRRykl-Pzzp'; 
+
+    let allData = []; // 用來儲存從 API 抓取的所有資料
+
+    /**
+     * 輔助函數：嘗試從數據項中獲取正確的處理狀態鍵名
+     * @param {Object} item - 單筆資料物件
+     * @returns {string|null} - 處理狀態的鍵名
+     */
+    function getStatusKey(item) {
+        // 1. 嘗試常見簡稱 (處理狀態)
+        if (item.hasOwnProperty("處理狀態")) {
+            return "處理狀態";
+        }
+        // 2. 嘗試表單預設名稱 (是否處理完成) - 正確的「處理」
+        if (item.hasOwnProperty("是否處理完成")) {
+            return "是否處理完成";
+        }
+        // 3. 嘗試用戶提供帶有錯別字的名稱 (是否處裡完成) - 帶錯字「處裡」
+        if (item.hasOwnProperty("是否處裡完成")) {
+            return "是否處裡完成";
+        }
+        return null;
+    }
+
+    /**
+     * 動態填充里別篩選下拉選單
+     */
+    function populateVillageFilter() {
+        const select = document.getElementById('filterVillage');
+        const villages = new Set();
+
+        allData.forEach(item => {
+            const village = item["社區里別"];
+            if (village && String(village).trim() !== '') {
+                villages.add(village);
+            }
+        });
+
+        // 將里別名稱轉換為陣列並排序 (使用中文排序)
+        const sortedVillages = Array.from(villages).sort((a, b) => a.localeCompare(b, 'zh-TW'));
+
+        sortedVillages.forEach(village => {
+            const option = document.createElement('option');
+            option.value = village;
+            option.textContent = village;
+            select.appendChild(option);
+        });
+
+        // 設置里別下拉選單的變動事件，讓其在選擇後自動觸發篩選
+        select.addEventListener('change', displayData);
+    }
+
+    // 1. 從 GAS API 抓取資料
+    async function fetchData() {
+        try {
+            // 使用 fetch 抓取資料
+            const response = await fetch(API_URL);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            allData = await response.json();
+            console.log("資料已成功載入:", allData);
+            
+            // 載入資料後，填充里別篩選器
+            populateVillageFilter(); 
+            
+            displayData(); // 成功載入後，立即顯示資料
+        } catch (error) {
+            console.error("載入資料時發生錯誤:", error);
+            // 欄位數增加到 6
+            document.getElementById('dataBody').innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">
+                資料載入失敗，可能原因：瀏覽器阻擋跨域請求，或 GAS 部署權限問題。
+            </td></tr>`;
+        }
+    }
+
+    // 2. 篩選並顯示資料
+    function displayData() {
+        const villageFilter = document.getElementById('filterVillage').value.trim(); // 取得選中的里別值 (可能是空字串或實際里名)
+        const statusFilter = document.getElementById('filterStatus').value; // 這裡拿到 V, X, 或空字串
+        const tbody = document.getElementById('dataBody');
+        
+        tbody.innerHTML = ''; // 清空表格內容
+
+        // 根據使用者輸入進行篩選
+        const filtered = allData.filter(item => {
+            // 處理狀態的鍵名查找
+            const statusKey = getStatusKey(item);
+            
+            // 里別篩選：下拉選單選中空字串時，不過濾；否則執行精確匹配
+            const villageValue = String(item["社區里別"] || '');
+            const villageMatch = !villageFilter || villageValue === villageFilter; // 精確匹配
+
+            // 狀態篩選：檢查原始數據 (V, X) 是否與篩選器的值匹配
+            const currentRawStatus = statusKey ? (item[statusKey] || '').toUpperCase() : ''; // 獲取 V 或 X
+            const statusMatch = statusFilter === "" || (currentRawStatus === statusFilter); // 檢查 V/X 匹配
+            
+            return villageMatch && statusMatch;
+        });
+
+        if (filtered.length === 0) {
+            // 欄位數增加到 6
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-info">查無符合條件的相關資料</td></tr>';
+            return;
+        }
+
+        // 建立表格列 (Row)
+        filtered.forEach(item => {
+            // 處理狀態顯示邏輯
+            const statusKey = getStatusKey(item);
+            const rawStatus = statusKey ? (item[statusKey] || '').toUpperCase() : '';
+
+            let statusText;
+            let statusClass;
+
+            if (rawStatus === 'V') {
+                statusText = '已完成 (V)';
+                statusClass = 'status-done';
+            } else if (rawStatus === 'X') {
+                statusText = '未完成 (X)';
+                statusClass = 'status-wait';
+            } else {
+                statusText = rawStatus || '未知';
+                statusClass = 'text-muted'; 
+            }
+            
+            // 確保時間戳記顯示為可讀格式
+            const timestamp = new Date(item["時間戳記"]).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+            
+            // 獲取「通報類別」 (已包含多鍵名容錯)
+            let reportCategory = item["通報類別"];
+            if (!reportCategory || reportCategory === '-') {
+                // 嘗試常見的替代鍵名：問題類別、通報事項、問題類型
+                reportCategory = item["問題類別"] || item["通報事項"] || item["問題類型"] || '-';
+            }
+            reportCategory = reportCategory || '-';
+
+            // 獲取「鄰長編號」 (已包含多鍵名容錯)
+            let neighborChief = item["您是第幾鄰長"];
+            if (!neighborChief || neighborChief === '-') {
+                 // 嘗試常見的替代鍵名：鄰長編號
+                neighborChief = item["鄰長編號"] || item["鄰長"] || '-';
+            }
+            neighborChief = neighborChief || '-';
+
+
+            // 取得「您想改善問題選項」的欄位資料
+            const problemOption = item["您想改善問題選項"] || '-'; 
+
+            const row = `<tr>
+                <td>${timestamp}</td>
+                <td>${item["社區里別"] || '-'}</td>
+                <td>${neighborChief}</td> <!-- 顯示鄰長編號 -->
+                <td>${reportCategory}</td> 
+                <td>${problemOption}</td> 
+                <td><span class="${statusClass}">${statusText}</span></td>
+            </tr>`;
+            tbody.innerHTML += row;
+        });
+    }
+
+    // 網頁啟動時，載入資料
+    fetchData();
+</script>
+
+</body>
+</html>
